@@ -1,0 +1,5 @@
+Run localhost server if needed: python http.server 8000
+
+Run with chrome --disable-web-security --user-data-dir="C:/ChromeDev"
+
+Open fullscreen window

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AR.js + Three.js ES Module Example</title>
+
+  <!-- Import map for three.js and examples -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
+      "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body style="margin:0; overflow:hidden;">
+
+<script type="module">
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+  // Make THREE global so AR.js can access it
+  window.THREE = THREE;
+
+  // Dynamically load AR.js script
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-threex.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load AR.js'));
+    document.head.appendChild(script);
+  });
+
+  // Now THREEx namespace is available globally
+
+  // Renderer setup
+  const renderer = new THREE.WebGLRenderer({ alpha: true });
+  renderer.setClearColor(new THREE.Color('lightgrey'), 0);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.domElement.style.position = 'absolute';
+  renderer.domElement.style.top = '0px';
+  renderer.domElement.style.left = '0px';
+  document.body.appendChild(renderer.domElement);
+
+  // Scene and camera
+  const scene = new THREE.Scene();
+  const camera = new THREE.Camera();
+  scene.add(camera);
+
+	const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+	scene.add(light);
+
+	const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+	directionalLight.position.set(0, 1, 0).normalize();
+	scene.add(directionalLight);
+
+
+  // ARToolkit source
+  const arToolkitSource = new THREEx.ArToolkitSource({
+    sourceType: 'webcam'
+  });
+
+  arToolkitSource.init(() => onResize());
+  window.addEventListener('resize', () => onResize());
+  function onResize() {
+    arToolkitSource.onResizeElement();
+    arToolkitSource.copyElementSizeTo(renderer.domElement);
+    if (arToolkitContext.arController !== null) {
+      arToolkitSource.copyElementSizeTo(arToolkitContext.arController.canvas);
+    }
+  }
+
+  // ARToolkit context
+  const arToolkitContext = new THREEx.ArToolkitContext({
+    cameraParametersUrl: 'camera_para.dat',
+    detectionMode: 'mono',
+    maxDetectionRate: 60,
+    canvasWidth: 240,
+    canvasHeight: 180,
+  });
+
+  await new Promise(resolve => {
+    arToolkitContext.init(() => {
+      camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+      resolve();
+    });
+  });
+
+  // Marker controls
+  const markerRoot = new THREE.Group();
+  scene.add(markerRoot);
+
+  const artoolkitMarker = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+    type: 'pattern',
+    patternUrl: 'w.patt'
+  });
+
+  // Smoothed controls
+  const smoothedRoot = new THREE.Group();
+  scene.add(smoothedRoot);
+
+  const smoothedControls = new THREEx.ArSmoothedControls(smoothedRoot, {
+    lerpPosition: 0.4,
+    lerpQuaternion: 0.3,
+    lerpScale: 1,
+  });
+
+  // Add model
+  const loader = new GLTFLoader();
+  const arWorldRoot = smoothedRoot;
+
+  loader.load(
+    'mercedes.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.scale.set(0.25, 0.25, 0.25);
+      model.position.y = 0;
+      arWorldRoot.add(model);
+    },
+    undefined,
+    (error) => {
+      console.error('Error loading model:', error);
+    }
+  );
+
+  // Animation loop
+  function animate(nowMsec) {
+    requestAnimationFrame(animate);
+
+    if (arToolkitSource.ready === false) return;
+
+    arToolkitContext.update(arToolkitSource.domElement);
+
+    smoothedControls.update(markerRoot);
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+</script>
+
+</body>
+</html>
