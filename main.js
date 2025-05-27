@@ -352,7 +352,8 @@ function initSliders() {
 }
 
 function initWebCam() {
-    video = createVideoElement();
+	video = document.createElement("video");
+    video.autoplay = true;
 	document.getElementById("canvas-holder").appendChild(video);
 
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -377,9 +378,4 @@ function initWebCam() {
     } else {
         console.error("getUserMedia not supported in this browser");
     }
-}
-function createVideoElement() {
-    video = document.createElement("video");
-    video.autoplay = true;
-    return video;
 }
