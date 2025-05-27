@@ -23,6 +23,8 @@ function ShaderProgram(name, program) {
     this.iColor = -1;
     // Location of the uniform matrix representing the combined transformation.
     this.iModelViewProjectionMatrix = -1;
+	this.iUseTexture = -1;
+    this.iTexture = -1;
 
     this.Use = function() {
         gl.useProgram(this.prog);
@@ -38,10 +40,6 @@ function draw() {
     gl.clearColor(0,0,0,0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-
-
-    // PATH ZERO: DRAW ZERO PARALLAX WEBCAM
-
     if (iTextureWebCam >= 0 && video.readyState >= video.HAVE_CURRENT_DATA) {
 		gl.bindTexture(gl.TEXTURE_2D, iTextureWebCam);
 		gl.texImage2D(
@@ -53,9 +51,22 @@ function draw() {
     }
 
     let matrOrth = m4.orthographic(0,1,0,1, 8,20);
-    
-    // TODO: Place your code here to draw webCam surface
+    const identityMV = m4.identity();
 
+	gl.uniformMatrix4fv(shProgram.iProjectionMatrix, false, matrOrth);
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, identityMV);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, iTextureWebCam);
+
+    gl.uniform1i(shProgram.iTexture, 0);
+    gl.uniform1i(shProgram.iUseTexture, 1);
+
+    surfaceWebCam.Draw();
+
+    gl.uniform1i(shProgram.iUseTexture, 0);
+
+    gl.enable(gl.DEPTH_TEST);
     
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
@@ -84,7 +95,6 @@ function draw() {
     
     gl.colorMask(true, false, false, true);
     gl.uniform4fv(shProgram.iColor, colorPolygon );
-    surface.Draw();
     gl.uniform4fv(shProgram.iColor, colorEdge );
     surface.DrawWireframe();
 
@@ -109,8 +119,6 @@ function draw() {
     gl.uniform4fv(shProgram.iColor, colorEdge );
     surface.DrawWireframe();
 
-    // RESET specific params to their default state
-
     gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.colorMask(true, true, true, true);
 }
@@ -124,8 +132,42 @@ const renderingParams = {
 };
 
 
+function CreateWebCamSurfaceData() {
+    let data = {};
 
+    data.verticesF32 = new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]);
 
+    data.texCoordsF32 = new Float32Array([1, 1, 0, 1, 0, 0, 1, 0]);
+
+    data.indicesU16 = new Uint16Array([0, 1, 2, 0, 2, 3]);
+
+    return data;
+}
+
+function CreateWebCamTexture(width, height) {
+    let textureID = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, textureID);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        width,
+        height,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null
+    );
+
+    return textureID;
+}
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
@@ -138,6 +180,13 @@ function initGL() {
     shProgram.iModelViewMatrix           = gl.getUniformLocation(prog, "ModelViewMatrix");
     shProgram.iProjectionMatrix          = gl.getUniformLocation(prog, "ProjectionMatrix");
     shProgram.iColor                     = gl.getUniformLocation(prog, "color");
+	
+	shProgram.iAttribTexCoord			 = gl.getAttribLocation(prog, "texCoord");
+    shProgram.iTexture					 = gl.getUniformLocation(prog, "uTexture");
+    shProgram.iUseTexture				 = gl.getUniformLocation(prog, "useTexture");
+	
+	gl.uniform1i(shProgram.iTexture, 0); // Use texture unit 0
+    gl.uniform1i(shProgram.iUseTexture, 0); // Disable texture by default
 
     let data = {};
     
@@ -147,8 +196,44 @@ function initGL() {
     surface.BufferData(data.verticesF32, data.indicesU16);
 
     surfaceWebCam = new Model('SurfaceWebCam');
-    // TODO: Place your code here to load two triangle geomtery
+    surfaceWebCam.hasTexCoords = true;
+	iTextureWebCam = CreateWebCamTexture(640, 480);
 
+	iTextureWebCam = CreateWebCamTexture(640, 480);
+
+    gl.bindTexture(gl.TEXTURE_2D, iTextureWebCam);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const blackPixels = new Uint8Array([0, 0, 0, 255]);
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        blackPixels
+    );
+
+    if (shProgram.iAttribTexCoord >= 0) {
+        gl.enableVertexAttribArray(shProgram.iAttribTexCoord);
+    }
+
+    let webcamData = CreateWebCamSurfaceData();
+    surfaceWebCam.BufferData(
+        webcamData.verticesF32,
+        webcamData.indicesU16,
+        webcamData.texCoordsF32
+    );
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, surfaceWebCam.iTexCoordBuffer);
+    gl.vertexAttribPointer(shProgram.iAttribTexCoord, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(shProgram.iAttribTexCoord);
 
     stereoCam = new StereoCamera(
         renderingParams.eyeSeparation,     // decimeters
@@ -222,7 +307,20 @@ function init() {
         return;
     }
 
-	document.getElementById('eyeSeparation').addEventListener('input', e => {
+    initWebCam();
+    initSliders();
+    spaceball = new TrackballRotator(canvas, draw, 0);
+
+    function animationLoop() {
+        draw();
+        requestAnimationFrame(animationLoop);
+    }
+
+    requestAnimationFrame(animationLoop);
+}
+
+function initSliders() {
+    document.getElementById('eyeSeparation').addEventListener('input', e => {
         renderingParams.eyeSeparation = +e.target.value;
         stereoCam.eyeSeparation = +e.target.value;
         document.getElementById('eyeSeparationValue').innerText = e.target.value;
@@ -251,40 +349,37 @@ function init() {
 		stereoCam.farClippingDistance = +e.target.value;
 		document.getElementById('farClipValue').innerText = e.target.value;
 	});
-	
-	
-    video = document.createElement('video');
-	document.getElementById("canvas-holder").appendChild(video);
-    video.autoplay = true;
-	video.style.position = 'absolute';
-	video.style.top = '200';
-	video.style.left = '200';
-	video.style.width = '600px';
-	video.style.height = '600px';
-	video.style.zIndex = '0';
-
-    // Connect to video stream
-    let constraints = {video: true};
-    navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
-        video.srcObject = stream;
-
-        let track = stream.getVideoTracks()[0];
-        let settings = track.getSettings();
-
-        iTextureWebCam = CreateWebCamTexture(settings.width, settings.height);
-
-        video.play();
-    }  )
-    .catch(function(err) {
-        console.log(err.name + ": " + err.message);
-    }
-    );
-
-    setInterval(draw, 50);
-	
-    spaceball = new TrackballRotator(canvas, draw, 0);
-
-    draw();
 }
 
+function initWebCam() {
+    video = createVideoElement();
+	document.getElementById("canvas-holder").appendChild(video);
 
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices
+            .getUserMedia({
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                },
+            })
+            .then(function (stream) {
+                video.srcObject = stream;
+                video.onloadedmetadata = function () {
+                    video.play().catch(function (err) {
+                        console.error("Error starting video playback:", err);
+                    });
+                };
+            })
+            .catch(function (err) {
+                console.error("Error accessing camera:", err);
+            });
+    } else {
+        console.error("getUserMedia not supported in this browser");
+    }
+}
+function createVideoElement() {
+    video = document.createElement("video");
+    video.autoplay = true;
+    return video;
+}

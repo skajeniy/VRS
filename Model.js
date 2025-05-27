@@ -28,29 +28,43 @@ function Model(name) {
     this.iIndexBuffer = gl.createBuffer();
     this.count = 0;
 
-    this.BufferData = function(vertices, indices) {
+    this.BufferData = function(vertices, indices, texCoords = null) {
+		this.vertexBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+		gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STREAM_DRAW);
-        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(shProgram.iAttribVertex);
+		this.indexBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STREAM_DRAW);
+		this.count = indices.length;
 
-        this.count = indices.length;
-    }
+		if (texCoords) {
+			this.iTexCoordBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.iTexCoordBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+		}
+	};
+
 
     this.Draw = function() {
-
         //gl.drawArrays(gl.LINE_STRIP, 0, this.count);
         gl.drawElements(gl.TRIANGLES, this.count, gl.UNSIGNED_SHORT, 0);
     }
 
     this.DrawWireframe = function() {
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+		gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+		gl.enableVertexAttribArray(shProgram.iAttribVertex);
 
-        for (let p=0; p<this.count; p+=3)                    // offset in bytes (UNSIGNED_SHORT is two bytes)
-            gl.drawElements(gl.LINE_LOOP, 3, gl.UNSIGNED_SHORT, p*2);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
+		for (let p = 0; p < this.count; p += 3) {
+			gl.drawElements(gl.LINE_LOOP, 3, gl.UNSIGNED_SHORT, p * 2);
+		}
+
+		gl.disableVertexAttribArray(shProgram.iAttribVertex);
     }
 }
 
@@ -63,8 +77,8 @@ function CreateSurfaceData(data) {
 
     let compNormals = true;
 
-	let granularityU = 50;
-	let granularityV = 50;
+	let granularityU = 24;
+	let granularityV = 24;
 
     for (let j = 0; j <= granularityV; j++) {
         let v = j / granularityV; 
